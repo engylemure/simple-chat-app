@@ -1,0 +1,29 @@
+mutation CreateUser {
+  createUser {
+    id
+    name
+  }
+}
+
+mutation UpdateUser($name: String!) {
+  updateUser(name: $name) {
+    id
+    name
+  }
+}
+
+mutation CreateRoom($name: String!) {
+  createRoom(roomName: $name) {
+    id
+    name
+    messages {
+      id
+    }
+  }
+}
+
+mutation SendMessage($input: CreateMessageInput!) {
+  sendMessage(input: $input) {
+    id
+  }
+}

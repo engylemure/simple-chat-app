@@ -1,0 +1,52 @@
+query Me {
+  me {
+    id
+    name
+  }
+}
+
+query Rooms {
+  rooms {
+    id
+    name
+    messages {
+      id
+      content
+      user {
+        id
+        name
+      }
+      repliedTo {
+        id
+        content
+        user {
+          id
+          name
+        }
+      }
+    }
+  }
+}
+
+query Room($id: ID!) {
+  room(roomId: $id) {
+    id
+    name
+    messages {
+      id
+      content
+      user {
+        id
+        name
+      }
+      repliedTo {
+        id
+        content
+        user {
+          id
+          name
+        }
+      }
+    }
+  }
+}
