@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use async_graphql::{
     http::{playground_source, GraphQLPlaygroundConfig},
     Schema,
@@ -5,15 +7,18 @@ use async_graphql::{
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 use axum::{
     extract::Extension,
-    http::{HeaderMap, Method},
+    http::HeaderMap,
     response::{self, IntoResponse},
     routing::get,
     Router, Server,
 };
 use graphql::schema::{ChappSchema, Mutation, Query, Subscription};
 use storage::storage::Storage;
+use tower_http::{
+    cors::CorsLayer,
+    trace::{self, TraceLayer},
+};
 use ulid::Ulid;
-use tower_http::cors::{CorsLayer, Any};
 
 use crate::graphql::schema::UserID;
 
@@ -39,27 +44,36 @@ async fn graphql_handler(
 
 async fn gql_playground() -> impl IntoResponse {
     let config = GraphQLPlaygroundConfig::new("/")
-        .subscription_endpoint("/ws")
+        .subscription_endpoint("/subscriptions")
         .title("Chapp");
     response::Html(playground_source(config))
 }
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
     let schema = Schema::build(Query, Mutation, Subscription)
         .data(Storage::default())
         .finish();
 
     let cors = CorsLayer::permissive();
-    
+
+    let trace = TraceLayer::new_for_http()
+        .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+        .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO));
+
     let app = Router::new()
         .route("/", get(gql_playground).post(graphql_handler))
-        .route_service("/ws", GraphQLSubscription::new(schema.clone()))
+        .route_service("/subscriptions", GraphQLSubscription::new(schema.clone()))
         .layer(Extension(schema))
-        .layer(cors);
+        .layer(cors)
+        .layer(trace);
 
-    println!("GraphQL Playground: http://localhost:8000");
-    Server::bind(&"127.0.0.1:8000".parse().unwrap())
+    let addr: SocketAddr = "[::]:10000".parse().unwrap();
+    tracing::info!(message = "Starting server.", %addr);
+    Server::bind(&"[::]:8000".parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();

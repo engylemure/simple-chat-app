@@ -2,6 +2,7 @@ query Me {
   me {
     id
     name
+    createdAt
   }
 }
 
@@ -9,42 +10,40 @@ query Rooms {
   rooms {
     id
     name
-    messages {
-      id
-      content
-      user {
-        id
-        name
-      }
-      repliedTo {
-        id
-        content
-        user {
-          id
-          name
-        }
-      }
-    }
+    createdAt
   }
 }
 
-query Room($id: ID!) {
+query Room($id: ID!, $before: String, $after: String, $first: Int, $last: Int) {
   room(roomId: $id) {
     id
     name
-    messages {
-      id
-      content
-      user {
-        id
-        name
+    createdAt
+    messages(before: $before, after: $after, first: $first, last: $last) {
+      pageInfo {
+        hasPreviousPage
+        hasNextPage
+        startCursor
+        endCursor
       }
-      repliedTo {
+      nodes {
         id
         content
+        createdAt
         user {
           id
           name
+          createdAt
+        }
+        repliedTo {
+          id
+          content
+          createdAt
+          user {
+            id
+            name
+            createdAt
+          }
         }
       }
     }

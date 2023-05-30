@@ -5,9 +5,10 @@ const config: CodegenConfig = {
   documents: './src/**/*.gql',
   generates: {
     './src/graphql/generated.ts': {
-      plugins: ['typescript', 'typescript-operations', 'typed-document-node', '@kitql/graphql-codegen'],
+      plugins: ['typescript', 'typescript-operations', 'graphql-codegen-svelte-apollo'],
       config: {
-        useTypeImports: true
+        clientPath: './client',
+        asyncQuery: true
       }
     }
   }

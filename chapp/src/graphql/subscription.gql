@@ -1,18 +1,22 @@
 subscription RoomMessages($id: ID!) {
-  roomMessages(roomId: $id) {
-    id
-    content
-    user {
-      id
-      name
-    }
-    repliedTo {
-      id
-      content
-      user {
-        id
-        name
-      }
-    }
-  }
+	roomMessages(roomId: $id) {
+		id
+		content
+		createdAt
+		user {
+			id
+			name
+			createdAt
+		}
+		repliedTo {
+			id
+			content
+			createdAt
+			user {
+				id
+				name
+        createdAt
+			}
+		}
+	}
 }

@@ -38,7 +38,7 @@ impl Room {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Message {
   pub id: Ulid,
   pub room_id: Ulid,

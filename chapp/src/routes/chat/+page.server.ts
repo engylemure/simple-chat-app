@@ -1,24 +1,10 @@
-import { KQL_CreateUser, KQL_Me } from "../../graphql/generated";
-import type { PageServerLoad } from "../sverdle/$types";
+import { AsyncRooms } from "../../graphql/generated";
+import { getUser } from "../../lib/state/user";
+import type { PageServerLoad } from "./$types";
 
 export const load = (
-  async ({ cookies, fetch }) => {
-    let userId = cookies.get('user_id');
-    const customFetch: typeof fetch = (input, init) => {
-      const headers = new Headers(init?.headers);
-      if (userId) {
-        headers.append('user_id', userId)
-      }
-      return fetch(input, { ...init, headers })
-    }
-    const user = (await KQL_Me.query({ fetch: customFetch }));
-    if (!user.data?.me) {
-      const response = (await KQL_CreateUser.mutate({ fetch }));
-      userId = response.data?.createUser.id; 
-    }
-    if (userId) {
-      cookies.set('user_id', userId);
-    }
-    return { userId }
+  async (params) => {
+    const rooms = await AsyncRooms({});
+    return { user: await getUser(params), rooms }
   }
 ) satisfies PageServerLoad;

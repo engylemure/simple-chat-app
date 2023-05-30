@@ -1,7 +1,10 @@
 use async_graphql::{
-    futures_util::future::join, Context, Error, InputObject, Object, Result, Schema, Subscription,
-    ID,
+    connection::{query, Connection, Edge, EmptyFields},
+    futures_util::future::join,
+    Context, Error, InputObject, InputValueError, InputValueResult, Object, Result, Scalar,
+    ScalarType, Schema, Subscription, Value, ID,
 };
+use chrono::Utc;
 use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
 use ulid::Ulid;
@@ -13,6 +16,21 @@ use crate::storage::{
 
 pub struct UserID(pub Ulid);
 
+struct DateTime(chrono::DateTime<Utc>);
+
+#[Scalar]
+impl ScalarType for DateTime {
+    fn parse(value: Value) -> InputValueResult<Self> {
+        chrono::DateTime::parse_from_rfc3339(&value.to_string())
+            .map_err(|_| InputValueError::custom("Invalid date, expected rfc3339"))
+            .map(|dt| DateTime(chrono::DateTime::from(dt)))
+    }
+
+    fn to_value(&self) -> Value {
+        Value::String(self.0.to_rfc3339())
+    }
+}
+
 #[Object]
 impl User {
     async fn id(&self) -> ID {
@@ -20,6 +38,9 @@ impl User {
     }
     async fn name(&self) -> &Option<String> {
         &self.name
+    }
+    async fn created_at(&self) -> DateTime {
+        DateTime(self.created_at)
     }
 }
 
@@ -33,13 +54,80 @@ impl Room {
         &self.name
     }
 
-    async fn messages(&self, ctx: &Context<'_>) -> Vec<Message> {
+    async fn messages(
+        &self,
+        ctx: &Context<'_>,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<Connection<String, Message, EmptyFields, EmptyFields>> {
         let storage = ctx.data_unchecked::<Storage>();
-        let messages = storage.messages.lock().await;
-        self.messages
-            .iter()
-            .filter_map(|id| messages.get(id).map(Clone::clone))
-            .collect()
+        let messages: Vec<Message> = {
+            let messages = storage.messages.lock().await;
+            self.messages
+                .iter()
+                .filter_map(|id| messages.get(id).map(Clone::clone))
+                .collect()
+        };
+        query(
+            after,
+            before,
+            first,
+            last,
+            |after, before, first, last| async move {
+                let mut start = after
+                    .map(|after: String| {
+                        let id = Ulid::from_string(&after).ok();
+                        match id {
+                            Some(id) => messages
+                                .iter()
+                                .enumerate()
+                                .find_map(|(idx, msg)| (msg.id == id).then_some(idx)),
+                            _ => None,
+                        }
+                    })
+                    .flatten()
+                    .unwrap_or(0);
+                let mut end = before
+                    .map(|after: String| {
+                        let id = Ulid::from_string(&after).ok();
+                        match id {
+                            Some(id) => messages
+                                .iter()
+                                .enumerate()
+                                .find_map(|(idx, msg)| (msg.id == id).then_some(idx)),
+                            _ => None,
+                        }
+                    })
+                    .flatten()
+                    .unwrap_or(messages.len());
+                if let Some(first) = first {
+                    if end - start > first {
+                        end = start + first;
+                    }
+                }
+                if let Some(last) = last {
+                    if end - start > last {
+                        start = end - last;
+                    }
+                }
+                let mut connection = Connection::new(start > 0, end < messages.len());
+                connection.edges.extend(
+                    messages
+                        .into_iter()
+                        .skip(start)
+                        .take(end - start)
+                        .map(|m| Edge::with_additional_fields(m.id.to_string(), m, EmptyFields)),
+                );
+                Ok::<_, async_graphql::Error>(connection)
+            },
+        )
+        .await
+    }
+
+    async fn created_at(&self) -> DateTime {
+        DateTime(self.created_at)
     }
 }
 
@@ -79,6 +167,10 @@ impl Message {
             .await
             .get(&replied_to)
             .map(Clone::clone)
+    }
+
+    async fn created_at(&self) -> DateTime {
+        DateTime(self.created_at)
     }
 }
 
@@ -124,6 +216,9 @@ pub struct Mutation;
 #[Object]
 impl Mutation {
     async fn update_user(&self, ctx: &Context<'_>, name: String) -> Option<User> {
+        if name.len() < 4 {
+            return None;
+        }
         let user_id = ctx.data_opt::<UserID>()?;
         ctx.data_unchecked::<Storage>()
             .users
@@ -135,8 +230,9 @@ impl Mutation {
                 user.clone()
             })
     }
-    async fn create_user(&self, ctx: &Context<'_>) -> User {
-        let user = User::new();
+    async fn create_user(&self, ctx: &Context<'_>, name: Option<String>) -> User {
+        let mut user = User::new();
+        user.name = name;
         ctx.data_unchecked::<Storage>()
             .users
             .lock()
@@ -155,12 +251,26 @@ impl Mutation {
         room
     }
 
-    async fn send_message(&self, ctx: &Context<'_>, input: CreateMessageInput) -> Option<Message> {
+    async fn send_message(&self, ctx: &Context<'_>, input: CreateMessageInput) -> Result<Message> {
+        if input.content.len() == 0 {
+            return Err(Error::new("content shouln't be empty"));
+        }
         let storage = ctx.data_unchecked::<Storage>();
-        let user_id = ctx.data_opt::<UserID>()?;
-        let room_id = Ulid::from_string(input.room_id.as_str()).ok()?;
+        let user = storage
+            .users
+            .lock()
+            .await
+            .get(
+                &ctx.data_opt::<UserID>()
+                    .ok_or(Error::new("user_id not provided"))?
+                    .0,
+            )
+            .map(Clone::clone)
+            .ok_or(Error::new("User not found"))?;
+        let room_id =
+            Ulid::from_string(input.room_id.as_str()).map_err(|_| Error::new("Invalid roomId"))?;
         let message = Message::new(
-            &user_id.0,
+            &user.id,
             room_id.clone(),
             input.content,
             input
@@ -169,11 +279,15 @@ impl Mutation {
                 .flatten(),
         );
         let (mut messages, mut rooms) = join(storage.messages.lock(), storage.rooms.lock()).await;
-        let (room, msg_sender) = rooms.get_mut(&room_id)?;
+        let (room, msg_sender) = rooms
+            .get_mut(&room_id)
+            .ok_or(Error::new("Room not found"))?;
         room.messages.push(message.id.clone());
-        msg_sender.send(message.clone());
+        if msg_sender.receiver_count() > 0 {
+            let _ = msg_sender.send(message.clone());
+        }
         messages.insert(message.id.clone(), message.clone());
-        Some(message)
+        Ok(message)
     }
 }
 
@@ -197,7 +311,7 @@ impl Subscription {
             .ok_or(Error::new("Room not found"))?
             .1
             .subscribe();
-        let stream = BroadcastStream::new(receiver).filter_map(|i| i.ok());
+        let stream = BroadcastStream::new(receiver).filter_map(|i| dbg!(i.ok()));
         Ok(stream)
     }
 }

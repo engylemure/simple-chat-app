@@ -19,19 +19,22 @@
 		"@graphql-codegen/typescript": "^4.0.0",
 		"@graphql-codegen/typescript-graphql-request": "^5.0.0",
 		"@graphql-codegen/typescript-operations": "^4.0.0",
-		"@kitql/graphql-codegen": "^0.5.4",
 		"@neoconfetti/svelte": "^1.0.0",
 		"@sveltejs/adapter-auto": "^2.0.0",
 		"@sveltejs/kit": "^1.5.0",
 		"@types/cookie": "^0.5.1",
 		"@types/js-cookie": "^3.0.3",
+		"@types/lodash": "^4.14.195",
 		"@typescript-eslint/eslint-plugin": "^5.45.0",
 		"@typescript-eslint/parser": "^5.45.0",
 		"eslint": "^8.28.0",
 		"eslint-config-prettier": "^8.5.0",
 		"eslint-plugin-svelte": "^2.26.0",
 		"graphql": "^16.6.0",
+		"graphql-codegen-svelte-apollo": "^1.1.0",
+		"graphql-ws": "^5.13.1",
 		"js-cookie": "^3.0.5",
+		"lodash": "^4.17.21",
 		"prettier": "^2.8.0",
 		"prettier-plugin-svelte": "^2.8.1",
 		"svelte": "^3.54.0",
@@ -41,8 +44,5 @@
 		"vite": "^4.3.0",
 		"vitest": "^0.25.3"
 	},
-	"type": "module",
-	"dependencies": {
-		"@kitql/client": "^0.5.12"
-	}
+	"type": "module"
 }

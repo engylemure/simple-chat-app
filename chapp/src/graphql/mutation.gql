@@ -16,14 +16,27 @@ mutation CreateRoom($name: String!) {
   createRoom(roomName: $name) {
     id
     name
-    messages {
-      id
-    }
   }
 }
 
 mutation SendMessage($input: CreateMessageInput!) {
   sendMessage(input: $input) {
     id
+    content
+    createdAt
+    user {
+      id
+      name
+      createdAt
+    }
+    repliedTo {
+      id
+      content
+      createdAt
+      user {
+        id
+        name
+      }
+    }
   }
 }
