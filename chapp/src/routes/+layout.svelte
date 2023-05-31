@@ -3,22 +3,15 @@
 	import './styles.css';
 </script>
 
-<div class="app">
+<div class="h-screen w-screen overflow-y-auto min-h-screen max-h-screen flex flex-1 flex-col">
 	<Header />
 
-	<main>
+	<main class="flex flex-1 flex-col p-1 w-full h-full mx-auto my-0">
 		<slot />
 	</main>
 </div>
 
 <style>
-	.app {
-		display: flex;
-		flex-direction: column;
-		min-height: 100vh;
-		max-height: 100vh;
-		overflow-y: auto;
-	}
 
 	main {
 		flex: 1;

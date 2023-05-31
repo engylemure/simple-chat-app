@@ -1,52 +1,64 @@
-use std::net::SocketAddr;
+use std::{convert::Infallible, net::SocketAddr};
 
 use async_graphql::{
     http::{playground_source, GraphQLPlaygroundConfig},
     Schema,
 };
-use async_graphql_axum::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
-use axum::{
-    extract::Extension,
-    http::HeaderMap,
-    response::{self, IntoResponse},
-    routing::get,
-    Router, Server,
-};
-use graphql::schema::{ChappSchema, Mutation, Query, Subscription};
+use async_graphql_warp::{graphql_subscription, GraphQLResponse};
+use graphql::schema::{Mutation, Query, Subscription};
 use storage::storage::Storage;
-use tower_http::{
-    cors::CorsLayer,
-    trace::{self, TraceLayer},
-};
 use ulid::Ulid;
+use warp::{http::Response as HttpResponse, Filter};
 
 use crate::graphql::schema::UserID;
 
 mod graphql;
 mod storage;
 
-async fn graphql_handler(
-    headers: HeaderMap,
-    schema: Extension<ChappSchema>,
-    req: GraphQLRequest,
-) -> GraphQLResponse {
-    let user_id = headers
-        .get("user_id")
-        .and_then(|val| val.to_str().ok().map(Ulid::from_string).map(Result::ok))
-        .flatten();
-    let request = if let Some(user_id) = user_id {
-        req.0.data(UserID(user_id))
-    } else {
-        req.into_inner()
-    };
-    schema.execute(request).await.into()
-}
+async fn warp_server(schema: Schema<Query, Mutation, Subscription>) {
+    let cors_filter = warp::cors()
+        .allow_any_origin()
+        .allow_headers(["user_id", "content-type"])
+        .allow_methods(["GET", "POST", "OPTIONS"])
+        .allow_credentials(true);
 
-async fn gql_playground() -> impl IntoResponse {
-    let config = GraphQLPlaygroundConfig::new("/")
-        .subscription_endpoint("/subscriptions")
-        .title("Chapp");
-    response::Html(playground_source(config))
+    let graphql_post = warp::header::optional::<String>("user_id")
+        .and(async_graphql_warp::graphql(schema.clone()))
+        .and_then(
+            |user_id: Option<String>,
+             (schema, request): (
+                Schema<Query, Mutation, Subscription>,
+                async_graphql::Request,
+            )| async move {
+                let user_id = user_id
+                    .map(|v: String| Ulid::from_string(&v).ok())
+                    .flatten();
+                let request = if let Some(user_id) = user_id {
+                    request.data(UserID(user_id))
+                } else {
+                    request
+                };
+                Ok::<_, Infallible>(GraphQLResponse::from(schema.execute(request).await))
+            },
+        )
+        .with(warp::log("graphql_post"));
+    let playground = warp::path::end().and(warp::get()).map(|| {
+        HttpResponse::builder()
+            .header("content-type", "text/html")
+            .body(playground_source(
+                GraphQLPlaygroundConfig::new("/")
+                    .subscription_endpoint("/")
+                    .title("Chapp"),
+            ))
+    });
+    let routes = graphql_subscription(schema)
+        .with(warp::log("graphql_subscription"))
+        .or(playground)
+        .or(graphql_post)
+        .with(cors_filter);
+    let addr: SocketAddr = "[::]:8000".parse().unwrap();
+    tracing::info!(message = "Starting server.", %addr);
+    warp::serve(routes).run(addr).await;
 }
 
 #[tokio::main]
@@ -57,24 +69,5 @@ async fn main() {
     let schema = Schema::build(Query, Mutation, Subscription)
         .data(Storage::default())
         .finish();
-
-    let cors = CorsLayer::permissive();
-
-    let trace = TraceLayer::new_for_http()
-        .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
-        .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO));
-
-    let app = Router::new()
-        .route("/", get(gql_playground).post(graphql_handler))
-        .route_service("/subscriptions", GraphQLSubscription::new(schema.clone()))
-        .layer(Extension(schema))
-        .layer(cors)
-        .layer(trace);
-
-    let addr: SocketAddr = "[::]:10000".parse().unwrap();
-    tracing::info!(message = "Starting server.", %addr);
-    Server::bind(&"[::]:8000".parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    warp_server(schema).await;
 }

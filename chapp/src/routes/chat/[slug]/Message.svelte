@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { createEventDispatcher, onMount } from 'svelte';
+    const dispatch = createEventDispatcher();
 	import type { Message } from '../../../graphql/generated';
 	export let data: Message;
 	export let isOwn: boolean;
@@ -10,10 +12,13 @@
             document.getElementById(repliedTo.id)?.scrollIntoView({ behavior: 'smooth' })
         }
     }
+    onMount(() => {
+        dispatch('mount');
+    })
 </script>
 
-<div id={data.id} class={`messageContainer  ${isOwn ? 'own' : ''}`} >
-	<a class={`message ${isOwn ? 'own' : ''}`} href={`#${data.id}`} on:click={() => onClick(data)}>
+<div id={data.id} class={`flex flex-1  ${isOwn ? 'own' : ''}`}>
+	<a id={`#${data.id}`} class={`gap-2 p-4 text-slate-900 flex flex-col border-2 border-solid border-slate-400 bg-white rounded-md ${isOwn ? 'own' : ''}`} href={`#${data.id}`} on:click={() => onClick(data)}>
 		{#if repliedTo}
             <div class="repliedTo" on:click={onClickAtRepliedTo} on:keypress={onClickAtRepliedTo}>
                 <b>{repliedTo.user?.name || repliedTo.user?.id}</b>
@@ -22,7 +27,7 @@
 		{/if}
 		<b>{data.user?.name || data.user?.id}</b>
 		<p>{data.content}</p>
-        <span>{new Date(data.createdAt).toLocaleString()}</span>
+        <span class="text-xs">{new Date(data.createdAt).toLocaleString()}</span>
     </a>
 </div>
 

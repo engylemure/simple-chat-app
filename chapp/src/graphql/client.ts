@@ -15,7 +15,7 @@ const wsLink =
 	typeof window !== 'undefined'
 		? new GraphQLWsLink(
 				createClient({
-					url: `ws://${host}/subscriptions`
+					url: `ws://${host}/`
 				})
 		  )
 		: undefined;
@@ -28,7 +28,7 @@ const wsLink =
 const splitLink =
 	typeof window !== 'undefined' && wsLink != null
 		? split(
-				({ query, getContext }) => {
+				({ query }) => {
 					const definition = getMainDefinition(query);
 					return (
 						definition.kind === 'OperationDefinition' && definition.operation === 'subscription'

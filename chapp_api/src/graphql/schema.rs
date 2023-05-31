@@ -2,7 +2,7 @@ use async_graphql::{
     connection::{query, Connection, Edge, EmptyFields},
     futures_util::future::join,
     Context, Error, InputObject, InputValueError, InputValueResult, Object, Result, Scalar,
-    ScalarType, Schema, Subscription, Value, ID,
+    ScalarType, Subscription, Value, ID,
 };
 use chrono::Utc;
 use tokio::sync::broadcast;
@@ -174,8 +174,6 @@ impl Message {
     }
 }
 
-pub type ChappSchema = Schema<Query, Mutation, Subscription>;
-
 pub struct Query;
 
 #[Object]
@@ -311,7 +309,7 @@ impl Subscription {
             .ok_or(Error::new("Room not found"))?
             .1
             .subscribe();
-        let stream = BroadcastStream::new(receiver).filter_map(|i| dbg!(i.ok()));
+        let stream = BroadcastStream::new(receiver).filter_map(|i| i.ok());
         Ok(stream)
     }
 }

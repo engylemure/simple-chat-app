@@ -484,7 +484,10 @@ export const Room = (
                 >;
               }
             >(
-              { data: {} as any, loading: true, error: undefined, networkStatus: 1, query: q },
+              { data: client.readQuery({
+                query: RoomDoc,
+                ...options,
+              }) || {} as any, loading: true, error: undefined, networkStatus: 1, query: q },
               (set) => {
                 q.subscribe((v: any) => {
                   set({ ...v, query: q });
